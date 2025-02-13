@@ -73,7 +73,6 @@ class TestUnivariatePrior:
         # Check that the log_prob is finite
         log_prob = jax.vmap(p.log_prob)(samples)
         assert jnp.all(jnp.isfinite(log_prob))
-    
 
     def test_power_law(self):
         def powerlaw_log_pdf(x, alpha, xmin, xmax):
@@ -111,3 +110,17 @@ class TestUnivariatePrior:
         negative_alpha = [-0.5, -1.5, -2.0, -2.5, -3.0, -3.5, -4.0, -4.5, -5.0]
         for alpha_val in negative_alpha:
             func(alpha_val)
+
+    def test_Rayleigh(self):
+        p = RayleighPrior(["x"])
+        # Check that all the samples are finite
+        samples = p.sample(jax.random.PRNGKey(0), 10000)
+        assert jnp.all(jnp.isfinite(samples['x']))
+        # Check that the log_prob is finite
+        log_prob = jax.vmap(p.log_prob)(samples)
+        assert jnp.all(jnp.isfinite(log_prob))
+        # Check that the log_prob is correct in the support
+        x = trace_prior_parent(p, [])[0].add_name(jnp.linspace(0.0, 10.0, 1000)[None])
+        y = jax.vmap(p.base_prior.transform)(x)
+        y = jax.vmap(p.transform)(y)
+        assert jnp.allclose(jax.vmap(p.log_prob)(y), stats.rayleigh.logpdf(y['x']))
