@@ -238,7 +238,7 @@ class UniformPrior(SequentialTransformPrior):
     """
     Uniform prior with bounds
     """
-    
+
     xmin: float
     xmax: float
 
@@ -261,7 +261,7 @@ class UniformPrior(SequentialTransformPrior):
         parameter_names : list[str]
             The name of the parameter
         """
-        
+
         self.parameter_names = parameter_names
         assert self.n_dim == 1, "UniformPrior needs to be 1D distributions"
         self.xmax = xmax
@@ -358,7 +358,7 @@ class UniformSpherePrior(CombinePrior):
         max_mag : float
             Upper bound for the radius.
         """
-        
+
         self.parameter_names = parameter_names
         assert self.n_dim == 1, "UniformSpherePrior only takes the name of the vector"
         self.parameter_names = [
@@ -380,7 +380,7 @@ class PowerLawPrior(SequentialTransformPrior):
     """
     Power law prior distribution with spectral index alpha in the range [xmin, xmax]
     """
-    
+
     xmin: float
     xmax: float
     alpha: float
@@ -407,7 +407,7 @@ class PowerLawPrior(SequentialTransformPrior):
         parameter_names : list[str]
             The name of the parameter.
         """
-        
+
         self.parameter_names = parameter_names
         assert self.n_dim == 1, "Power law needs to be 1D distributions"
         self.xmax = xmax
