@@ -235,6 +235,10 @@ class CombinePrior(Prior):
 
 @jaxtyped(typechecker=typechecker)
 class UniformPrior(SequentialTransformPrior):
+    """
+    Uniform prior with bounds
+    """
+
     xmin: float
     xmax: float
 
@@ -247,6 +251,17 @@ class UniformPrior(SequentialTransformPrior):
         xmax: float,
         parameter_names: list[str],
     ):
+        """
+        Parameters
+        ----------
+        xmin : float
+            The lower bound
+        xmax : float
+            The upper bound
+        parameter_names : list[str]
+            The name of the parameter
+        """
+
         self.parameter_names = parameter_names
         assert self.n_dim == 1, "UniformPrior needs to be 1D distributions"
         self.xmax = xmax
@@ -327,11 +342,23 @@ class CosinePrior(SequentialTransformPrior):
 
 @jaxtyped(typechecker=typechecker)
 class UniformSpherePrior(CombinePrior):
+    """
+    A prior distribution where the pdf is uniform within a spherical region.
+    """
 
     def __repr__(self):
         return f"UniformSpherePrior(parameter_names={self.parameter_names})"
 
     def __init__(self, parameter_names: list[str], max_mag: float = 1.0, **kwargs):
+        """
+        Parameters
+        ----------
+        parameter_names : list[str]
+            A list of names for the parameters of the prior.
+        max_mag : float
+            Upper bound for the radius.
+        """
+
         self.parameter_names = parameter_names
         assert self.n_dim == 1, "UniformSpherePrior only takes the name of the vector"
         self.parameter_names = [
@@ -350,6 +377,10 @@ class UniformSpherePrior(CombinePrior):
 
 @jaxtyped(typechecker=typechecker)
 class PowerLawPrior(SequentialTransformPrior):
+    """
+    Power law prior distribution with spectral index alpha in the range [xmin, xmax]
+    """
+
     xmin: float
     xmax: float
     alpha: float
@@ -364,6 +395,19 @@ class PowerLawPrior(SequentialTransformPrior):
         alpha: float,
         parameter_names: list[str],
     ):
+        """
+        Parameters
+        ----------
+        xmin : float
+            The lower bound of the distribution.
+        xmax : float
+            The upper bound of the distribution.
+        alpha : float
+            The spectral index.
+        parameter_names : list[str]
+            The name of the parameter.
+        """
+
         self.parameter_names = parameter_names
         assert self.n_dim == 1, "Power law needs to be 1D distributions"
         self.xmax = xmax
