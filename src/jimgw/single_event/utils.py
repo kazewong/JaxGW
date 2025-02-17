@@ -291,8 +291,8 @@ def euler_rotation(delta_x: Float[Array, " 3"]):
     cos_beta = delta_x[2] / norm
     sin_beta = jnp.sqrt(1 - cos_beta**2)
 
-    alpha = jnp.atan2(-delta_x[1] * cos_beta, delta_x[0])
-    gamma = jnp.atan2(delta_x[1], delta_x[0])
+    alpha = jnp.arctan2(-delta_x[1] * cos_beta, delta_x[0])
+    gamma = jnp.arctan2(delta_x[1], delta_x[0])
 
     cos_alpha = jnp.cos(alpha)
     sin_alpha = jnp.sin(alpha)
@@ -353,7 +353,7 @@ def angle_rotation(
         + rotation[2][2] * cos_zenith
     )
     phi = jnp.fmod(
-        jnp.atan2(
+        jnp.arctan2(
             rotation[1][0] * sin_zenith * cos_azimuth
             + rotation[1][1] * sin_zenith * sin_azimuth
             + rotation[1][2] * cos_zenith,
@@ -393,14 +393,53 @@ def theta_phi_to_ra_dec(theta: Float, phi: Float, gmst: Float) -> tuple[Float, F
     return ra, dec
 
 
-def spin_to_cartesian_spin(
-    thetaJN: Float,
-    phiJL: Float,
-    tilt1: Float,
-    tilt2: Float,
-    phi12: Float,
-    chi1: Float,
-    chi2: Float,
+def rotate_y(angle, vec):
+    """
+    Rotate the vector (x, y, z) about y-axis
+    """
+    cos_angle = jnp.cos(angle)
+    sin_angle = jnp.sin(angle)
+    rotation_matrix = jnp.array(
+        [[cos_angle, 0, sin_angle], [0, 1, 0], [-sin_angle, 0, cos_angle]]
+    )
+    rotated_vec = jnp.dot(rotation_matrix, vec)
+    return rotated_vec
+
+
+def rotate_z(angle, vec):
+    """
+    Rotate the vector (x, y, z) about z-axis
+    """
+    cos_angle = jnp.cos(angle)
+    sin_angle = jnp.sin(angle)
+    rotation_matrix = jnp.array(
+        [[cos_angle, -sin_angle, 0], [sin_angle, cos_angle, 0], [0, 0, 1]]
+    )
+    rotated_vec = jnp.dot(rotation_matrix, vec)
+    return rotated_vec
+
+
+def Lmag_2PN(m1, m2, v0):
+    """
+    Compute the magnitude of the orbital angular momentum
+    to 2 post-Newtonian orders.
+    """
+    eta = m1 * m2 / (m1 + m2) ** 2
+    ## Simplified from:
+    ## (m1 + m2) * (m1 + m2) * eta = m1 * m2
+    LN = (m1 + m2) * (m1 + m2) * eta / v0
+    L_2PN = 1.5 + eta / 6.0
+    return LN * (1.0 + v0 * v0 * L_2PN)
+
+
+def spin_angles_to_cartesian_spin(
+    theta_jn: Float,
+    phi_jl: Float,
+    tilt_1: Float,
+    tilt_2: Float,
+    phi_12: Float,
+    chi_1: Float,
+    chi_2: Float,
     M_c: Float,
     q: Float,
     fRef: Float,
@@ -414,25 +453,25 @@ def spin_to_cartesian_spin(
 
     Parameters:
     -------
-    thetaJN: Float
+    theta_jn: Float
         Zenith angle between the total angular momentum and the line of sight
-    phiJL: Float
+    phi_jl: Float
         Difference between total and orbital angular momentum azimuthal angles
-    tilt1: Float
+    tilt_1: Float
         Zenith angle between the spin and orbital angular momenta for the primary object
-    tilt2: Float
+    tilt_2: Float
         Zenith angle between the spin and orbital angular momenta for the secondary object
-    phi12: Float
+    phi_12: Float
         Difference between the azimuthal angles of the individual spin vector projections
         onto the orbital plane
-    chi1: Float
+    chi_1: Float
         Primary object aligned spin:
-    chi2: Float
+    chi_2: Float
         Secondary object aligned spin:
     M_c: Float
         The chirp mass
-    eta: Float
-        The symmetric mass ratio
+    q: Float
+        The mass ratio
     fRef: Float
         The reference frequency
     phiRef: Float
@@ -456,87 +495,67 @@ def spin_to_cartesian_spin(
         The z-component of the secondary spin
     """
 
-    def rotate_y(angle, vec):
-        """
-        Rotate the vector (x, y, z) about y-axis
-        """
-        cos_angle = jnp.cos(angle)
-        sin_angle = jnp.sin(angle)
-        rotation_matrix = jnp.array(
-            [[cos_angle, 0, sin_angle], [0, 1, 0], [-sin_angle, 0, cos_angle]]
-        )
-        rotated_vec = jnp.dot(rotation_matrix, vec)
-        return rotated_vec
-
-    def rotate_z(angle, vec):
-        """
-        Rotate the vector (x, y, z) about z-axis
-        """
-        cos_angle = jnp.cos(angle)
-        sin_angle = jnp.sin(angle)
-        rotation_matrix = jnp.array(
-            [[cos_angle, -sin_angle, 0], [sin_angle, cos_angle, 0], [0, 0, 1]]
-        )
-        rotated_vec = jnp.dot(rotation_matrix, vec)
-        return rotated_vec
-
+    # Starting frame: LNh along the z-axis
+    # S1hat on the x-z plane
     LNh = jnp.array([0.0, 0.0, 1.0])
 
+    # Define the spin vectors in the LNh frame
     s1hat = jnp.array(
         [
-            jnp.sin(tilt1) * jnp.cos(phiRef),
-            jnp.sin(tilt1) * jnp.sin(phiRef),
-            jnp.cos(tilt1),
+            jnp.sin(tilt_1) * jnp.cos(phiRef),
+            jnp.sin(tilt_1) * jnp.sin(phiRef),
+            jnp.cos(tilt_1),
         ]
     )
     s2hat = jnp.array(
         [
-            jnp.sin(tilt2) * jnp.cos(phi12 + phiRef),
-            jnp.sin(tilt2) * jnp.sin(phi12 + phiRef),
-            jnp.cos(tilt2),
+            jnp.sin(tilt_2) * jnp.cos(phi_12 + phiRef),
+            jnp.sin(tilt_2) * jnp.sin(phi_12 + phiRef),
+            jnp.cos(tilt_2),
         ]
     )
 
     m1, m2 = Mc_q_to_m1_m2(M_c, q)
-    eta = q / (1 + q) ** 2
     v0 = jnp.cbrt((m1 + m2) * MTSUN * jnp.pi * fRef)
 
-    Lmag = ((m1 + m2) * (m1 + m2) * eta / v0) * (1.0 + v0 * v0 * (1.5 + eta / 6.0))
-    s1 = m1 * m1 * chi1 * s1hat
-    s2 = m2 * m2 * chi2 * s2hat
+    # Define S1, S2, and J
+    Lmag = Lmag_2PN(m1, m2, v0)
+    s1 = m1 * m1 * chi_1 * s1hat
+    s2 = m2 * m2 * chi_2 * s2hat
     J = s1 + s2 + jnp.array([0.0, 0.0, Lmag])
 
+    # Normalize J, and find theta0 and phi0 (the angles in starting frame)
     Jhat = J / jnp.linalg.norm(J)
     theta0 = jnp.arccos(Jhat[2])
     phi0 = jnp.arctan2(Jhat[1], Jhat[0])
 
-    # Rotation 1:
+    # Rotation 1: Rotate about z-axis by -phi0
     s1hat = rotate_z(-phi0, s1hat)
     s2hat = rotate_z(-phi0, s2hat)
 
-    # Rotation 2:
+    # Rotation 2: Rotate about y-axis by -theta0
     LNh = rotate_y(-theta0, LNh)
     s1hat = rotate_y(-theta0, s1hat)
     s2hat = rotate_y(-theta0, s2hat)
 
-    # Rotation 3:
-    LNh = rotate_z(phiJL - jnp.pi, LNh)
-    s1hat = rotate_z(phiJL - jnp.pi, s1hat)
-    s2hat = rotate_z(phiJL - jnp.pi, s2hat)
+    # Rotation 3: Rotate about z-axis by -phi_jl
+    LNh = rotate_z(phi_jl - jnp.pi, LNh)
+    s1hat = rotate_z(phi_jl - jnp.pi, s1hat)
+    s2hat = rotate_z(phi_jl - jnp.pi, s2hat)
 
     # Compute iota
-    N = jnp.array([0.0, jnp.sin(thetaJN), jnp.cos(thetaJN)])
+    N = jnp.array([0.0, jnp.sin(theta_jn), jnp.cos(theta_jn)])
     iota = jnp.arccos(jnp.dot(N, LNh))
 
     thetaLJ = jnp.arccos(LNh[2])
     phiL = jnp.arctan2(LNh[1], LNh[0])
 
-    # Rotation 4:
+    # Rotation 4: Rotate about z-axis by -phiL
     s1hat = rotate_z(-phiL, s1hat)
     s2hat = rotate_z(-phiL, s2hat)
     N = rotate_z(-phiL, N)
 
-    # Rotation 5:
+    # Rotation 5: Rotate about y-axis by -thetaLJ
     s1hat = rotate_y(-thetaLJ, s1hat)
     s2hat = rotate_y(-thetaLJ, s2hat)
     N = rotate_y(-thetaLJ, N)
@@ -546,9 +565,146 @@ def spin_to_cartesian_spin(
     s1hat = rotate_z(jnp.pi / 2.0 - phiN - phiRef, s1hat)
     s2hat = rotate_z(jnp.pi / 2.0 - phiN - phiRef, s2hat)
 
-    S1 = s1hat * chi1
-    S2 = s2hat * chi2
+    S1 = s1hat * chi_1
+    S2 = s2hat * chi_2
     return iota, S1[0], S1[1], S1[2], S2[0], S2[1], S2[2]
+
+
+def cartesian_spin_to_spin_angles(
+    iota: Float,
+    S1x: Float,
+    S1y: Float,
+    S1z: Float,
+    S2x: Float,
+    S2y: Float,
+    S2z: Float,
+    M_c: Float,
+    q: Float,
+    fRef: Float,
+    phiRef: Float,
+) -> tuple[Float, Float, Float, Float, Float, Float, Float]:
+    """
+    Transforming the cartesian spin parameters to the spin angles
+
+    The code is based on the approach used in LALsimulation:
+    https://lscsoft.docs.ligo.org/lalsuite/lalsimulation/group__lalsimulation__inference.html
+
+    Parameters:
+    -------
+    iota: Float
+       Zenith angle between the orbital angular momentum and the line of sight
+    S1x: Float
+        The x-component of the primary spin
+    S1y: Float
+        The y-component of the primary spin
+    S1z: Float
+        The z-component of the primary spin
+    S2x: Float
+        The x-component of the secondary spin
+    S2y: Float
+        The y-component of the secondary spin
+    S2z: Float
+        The z-component of the secondary spin
+    M_c: Float
+        The chirp mass
+    q: Float
+        The mass ratio
+    fRef: Float
+        The reference frequency
+    phiRef: Float
+        The binary phase at the reference frequency
+
+    Returns:
+    -------
+    theta_jn: Float
+    Zenith angle between the total angular momentum and the line of sight
+    phi_jl: Float
+        Difference between total and orbital angular momentum azimuthal angles
+    tilt_1: Float
+        Zenith angle between the spin and orbital angular momenta for the primary object
+    tilt_2: Float
+        Zenith angle between the spin and orbital angular momenta for the secondary object
+    phi_12: Float
+        Difference between the azimuthal angles of the individual spin vector projections
+        onto the orbital plane
+    chi_1: Float
+        Primary object aligned spin:
+    chi_2: Float
+        Secondary object aligned spin:
+    """
+    # Starting frame: LNh along the z-axis
+    LNh = jnp.array([0.0, 0.0, 1.0])
+
+    # Define the dimensionless component spin vectors and magnitudes
+    s1_vec = jnp.array([S1x, S1y, S1z])
+    s2_vec = jnp.array([S2x, S2y, S2z])
+    chi_1 = jnp.linalg.norm(s1_vec)
+    chi_2 = jnp.linalg.norm(s2_vec)
+
+    # Define the spin unit vectors in the LNh frame
+    if chi_1 > 0:
+        s1hat = s1_vec / chi_1
+    else:
+        s1hat = jnp.array([0.0, 0.0, 0.0])
+    if chi_2 > 0:
+        s2hat = s2_vec / chi_2
+    else:
+        s2hat = jnp.array([0.0, 0.0, 0.0])
+
+    # Azimuthal and polar angles of the spin vectors
+    phi1 = jnp.arctan2(s1hat[1], s1hat[0])
+    phi2 = jnp.arctan2(s2hat[1], s2hat[0])
+
+    phi_12 = phi2 - phi1
+
+    if phi_12 < 0:
+        phi_12 += 2 * jnp.pi
+
+    tilt_1 = jnp.arccos(s1hat[2])
+    tilt_2 = jnp.arccos(s2hat[2])
+
+    # Get angles in the J-N frame
+    m1, m2 = Mc_q_to_m1_m2(M_c, q)
+    v0 = jnp.cbrt((m1 + m2) * MTSUN * jnp.pi * fRef)
+
+    # Define S1, S2, J
+    S1 = m1 * m1 * s1_vec
+    S2 = m2 * m2 * s2_vec
+
+    Lmag = Lmag_2PN(m1, m2, v0)
+    J = S1 + S2 + Lmag * LNh
+
+    # Normalize J
+    Jhat = J / jnp.linalg.norm(J)
+
+    thetaJL = jnp.arccos(Jhat[2])
+    phiJ = jnp.arctan2(Jhat[1], Jhat[0])
+
+    # Azimuthal angle from phase angle
+    phi0 = 0.5 * jnp.pi - phiRef
+    # Line-of-sight vector in L-frame
+    N = jnp.array(
+        [jnp.sin(iota) * jnp.cos(phi0), jnp.sin(iota) * jnp.sin(phi0), jnp.cos(iota)]
+    )
+
+    # Inclination w.r.t. J
+    theta_jn = jnp.arccos(jnp.dot(Jhat, N))
+
+    # Rotate from L-frame to J-frame
+    N = rotate_z(-phiJ, N)
+    N = rotate_y(-thetaJL, N)
+
+    LNh = rotate_z(-phiJ, LNh)
+    LNh = rotate_y(-thetaJL, LNh)
+
+    phiN = jnp.arctan2(N[1], N[0])
+    LNh = rotate_z(0.5 * jnp.pi - phiN, LNh)
+
+    phi_jl = jnp.arctan2(LNh[1], LNh[0])
+    if phi_jl < 0:
+        phi_jl += 2 * jnp.pi
+
+    return theta_jn, phi_jl, tilt_1, tilt_2, phi_12, chi_1, chi_2
 
 
 def zenith_azimuth_to_ra_dec(
